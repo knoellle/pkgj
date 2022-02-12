@@ -1,63 +1,127 @@
+from conans import ConanFile, CMake, tools
 import os
 import shutil
+import textwrap
 
-from conans import CMake, tools
-from conans import ConanFile
+required_conan_version = ">=1.43.0"
 
 
 class Bzip2Conan(ConanFile):
     name = "bzip2"
+    url = "https://github.com/conan-io/conan-center-index"
+    homepage = "http://www.bzip.org"
     version = "1.0.6"
-    branch = "master"
+    license = "bzip2-1.0.8"
+    description = "bzip2 is a free and open-source file compression program that uses the Burrows Wheeler algorithm."
+    topics = ("bzip2", "data-compressor", "file-compression")
+
+    settings = "os", "arch", "compiler", "build_type"
+    options = {
+        "shared": [True, False],
+        "fPIC": [True, False],
+        "build_executable": [True, False],
+    }
+    default_options = {
+        "shared": False,
+        "fPIC": True,
+        "build_executable": True,
+    }
+
     generators = "cmake"
-    settings = "os", "compiler", "arch", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = "shared=False", "fPIC=True"
-    exports = ["CMakeLists.txt"]
-    url = "https://github.com/lasote/conan-bzip2"
-    license = "BSD-style license"
-    description = "bzip2 is a freely available, patent free (see below), high-quality data " \
-                  "compressor. It typically compresses files to within 10% to 15% of the best" \
-                  " available techniques (the PPM family of statistical compressors), whilst " \
-                  "being around twice as fast at compression and six times faster at decompression."
+    _cmake = None
 
     @property
-    def zip_folder_name(self):
-        return "bzip2-%s" % self.version
+    def _source_subfolder(self):
+        return "source_subfolder"
 
-    def config(self):
+    def export_sources(self):
+        self.copy("CMakeLists.txt")
+        # for patch in self.conan_data.get("patches", {}).get(self.version, []):
+        #     self.copy(patch["patch_file"])
+
+    def config_options(self):
+        if self.settings.os == "Windows":
+            del self.options.fPIC
+        self.license = "bzip2-{}".format(self.version)
+
+    def configure(self):
+        if self.options.shared:
+            del self.options.fPIC
         del self.settings.compiler.libcxx
+        del self.settings.compiler.cppstd
 
     def source(self):
-        zip_name = "bzip2-%s.tar.gz" % self.version
-        # url = "http://www.bzip.org/%s/%s" % (self.version, zip_name)
-        url = "https://bintray.com/conan/Sources/download_file?file_path=%s" % zip_name
-        tools.download(url, zip_name)
-        tools.check_md5(zip_name, "00b516f4704d4a7cb50a1d97e6e8e15b")
-        tools.unzip(zip_name)
-        os.unlink(zip_name)
+        tools.get("https://sourceware.org/pub/bzip2/bzip2-1.0.6.tar.gz", destination=self._source_subfolder, strip_root=True)
+        shutil.copy("CMakeLists.txt", self._source_subfolder)
+
+    def _configure_cmake(self):
+        if self._cmake:
+            return self._cmake
+        self._cmake = CMake(self)
+        self._cmake.definitions["BZ2_VERSION_STRING"] = self.version
+        self._cmake.definitions["BZ2_VERSION_MAJOR"] = tools.Version(self.version).major
+        self._cmake.definitions["BZ2_BUILD_EXE"] = self.options.build_executable
+        self._cmake.configure()
+        return self._cmake
 
     def build(self):
-        shutil.move("CMakeLists.txt", "%s/CMakeLists.txt" % self.zip_folder_name)
-        with tools.chdir(self.zip_folder_name):
-            if self.settings.os == "Windows" and tools.os_info.is_linux:
-                tools.replace_in_file("bzip2.c", "sys\\stat.h", "sys/stat.h")
-            os.mkdir("_build")
-            with tools.chdir("_build"):
-                cmake = CMake(self)
-                if self.options.fPIC:
-                    cmake.definitions["FPIC"] = "ON"
-                cmake.configure(build_dir=".", source_dir="..")
-                cmake.build(build_dir=".")
+        # for patch in self.conan_data.get("patches", {}).get(self.version, []):
+        #     tools.patch(**patch)
+        cmake = self._configure_cmake()
+        cmake.build()
 
     def package(self):
-        self.copy("*.h", "include", "%s" % self.zip_folder_name, keep_path=False)
-        self.copy("*bzip2", dst="bin", src=self.zip_folder_name, keep_path=False)
-        self.copy(pattern="*.so*", dst="lib", src=self.zip_folder_name, keep_path=False)
-        self.copy(pattern="*.dylib", dst="lib", src=self.zip_folder_name, keep_path=False)
-        self.copy(pattern="*.a", dst="lib", src="%s/_build" % self.zip_folder_name, keep_path=False)
-        self.copy(pattern="*.lib", dst="lib", src="%s/_build" % self.zip_folder_name, keep_path=False)
-        self.copy(pattern="*.dll", dst="bin", src="%s/_build" % self.zip_folder_name, keep_path=False)
+        self.copy("LICENSE", dst="licenses", src=self._source_subfolder)
+        cmake = self._configure_cmake()
+        cmake.install()
+        self._create_cmake_module_variables(
+            os.path.join(self.package_folder, self._module_file)
+        )
+
+    @staticmethod
+    def _create_cmake_module_variables(module_file):
+        content = textwrap.dedent("""\
+            set(BZIP2_NEED_PREFIX TRUE)
+            if(NOT DEFINED BZIP2_FOUND AND DEFINED BZip2_FOUND)
+                set(BZIP2_FOUND ${BZip2_FOUND})
+            endif()
+            if(NOT DEFINED BZIP2_INCLUDE_DIRS AND DEFINED BZip2_INCLUDE_DIRS)
+                set(BZIP2_INCLUDE_DIRS ${BZip2_INCLUDE_DIRS})
+            endif()
+            if(NOT DEFINED BZIP2_INCLUDE_DIR AND DEFINED BZip2_INCLUDE_DIR)
+                set(BZIP2_INCLUDE_DIR ${BZip2_INCLUDE_DIR})
+            endif()
+            if(NOT DEFINED BZIP2_LIBRARIES AND DEFINED BZip2_LIBRARIES)
+                set(BZIP2_LIBRARIES ${BZip2_LIBRARIES})
+            endif()
+            if(NOT DEFINED BZIP2_VERSION_STRING AND DEFINED BZip2_VERSION)
+                set(BZIP2_VERSION_STRING ${BZip2_VERSION})
+            endif()
+        """)
+        tools.save(module_file, content)
+
+    @property
+    def _module_subfolder(self):
+        return os.path.join("lib", "cmake")
+
+    @property
+    def _module_file(self):
+        return os.path.join(self._module_subfolder,
+                            "conan-official-{}-variables.cmake".format(self.name))
 
     def package_info(self):
-        self.cpp_info.libs = ['bz2']
+        self.cpp_info.set_property("cmake_find_mode", "both")
+        self.cpp_info.set_property("cmake_file_name", "BZip2")
+        self.cpp_info.set_property("cmake_target_name", "BZip2::BZip2")
+        self.cpp_info.builddirs.append(self._module_subfolder)
+        self.cpp_info.set_property("cmake_build_modules", [self._module_file])
+        self.cpp_info.libs = ["bz2"]
+
+        self.cpp_info.names["cmake_find_package"] = "BZip2"
+        self.cpp_info.names["cmake_find_package_multi"] = "BZip2"
+        self.cpp_info.build_modules["cmake_find_package"] = [self._module_file]
+
+        if self.options.build_executable:
+            bin_path = os.path.join(self.package_folder, "bin")
+            self.output.info("Appending PATH environment variable: {}".format(bin_path))
+            self.env_info.PATH.append(bin_path)

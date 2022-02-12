@@ -9,12 +9,12 @@ cd ci
 ./setup_conan.sh
 
 export VITASDK=$(pipenv run conan info vitasdk-toolchain/1207@blastrock/pkgj --paths -pr vita | grep -Po '(?<=package_folder: ).*$')
-export CC=gcc-7
-export CXX=g++-7
+export CC=gcc-10
+export CXX=g++-10
 
 mkdir buildhost
 cd buildhost
-pipenv run conan install ../.. --build missing -s build_type=RelWithDebInfo -s compiler=gcc -s compiler.version=7 -s compiler.libcxx=libstdc++11
+pipenv run conan install ../.. --build missing -s build_type=RelWithDebInfo -s compiler=gcc -s compiler.version=10.3 -s compiler.libcxx=libstdc++11
 cmake -GNinja ../.. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHOST_BUILD=ON -DPKGI_ENABLE_LOGGING=ON
 ninja
 cd ..

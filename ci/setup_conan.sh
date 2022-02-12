@@ -21,10 +21,6 @@ else
   cp conan/settings.yml $HOME/.conan/settings.yml
 fi
 
-if ! pipenv run conan remote list | grep bincrafters; then
-  pipenv run conan remote add bincrafters https://api.bintray.com/conan/bincrafters/public-conan
-fi
-
 pipenv run conan export conan-vitasdk blastrock/pkgj
 pipenv run conan export conan-fmt blastrock/pkgj
 pipenv run conan export conan-bzip2 blastrock/pkgj

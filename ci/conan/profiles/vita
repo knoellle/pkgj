@@ -11,5 +11,4 @@ compiler.version=10.1
 compiler.libcxx=libstdc++11
 
 [options]
-[scopes]
 [env]
